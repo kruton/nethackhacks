@@ -94,7 +94,7 @@ void findChange(string engraving, string corruption, uint32_t &offset, char &cha
 		}
 }
 
-bool searchWithinSeed(const string &engraving, const vector<uint32_t> &offsets, const vector<char> &changes, uint32_t &offset, const uint32_t &depth) {
+bool searchWithinSeed(const string &engraving, const vector<uint32_t> &offsets, const vector<unsigned char> &changes, uint32_t &offset, const uint32_t &depth) {
 	uint32_t cur_index = 0;
 	vector<uint32_t> cur_sequence;
 
@@ -134,7 +134,7 @@ bool searchWithinSeed(const string &engraving, const vector<uint32_t> &offsets, 
 	return true;
 }
 
-bool find_seed_hash(const string &engraving, const vector<uint32_t> &offsets, const vector<char> &changes, const string &target_dir) {
+bool find_seed_hash(const string &engraving, const vector<uint32_t> &offsets, const vector<unsigned char> &changes, const string &target_dir) {
 	// Initialize the random number generator for 10 numbers
 	init(10);
 
@@ -164,7 +164,7 @@ bool find_seed_hash(const string &engraving, const vector<uint32_t> &offsets, co
 	return true;
 }
 
-bool find_seed_brute(const string &engraving, const vector<uint32_t> &offsets, const vector<char> &changes, uint32_t &offset, const uint32_t first, const uint32_t last) {
+bool find_seed_brute(const string &engraving, const vector<uint32_t> &offsets, const vector<unsigned char> &changes, uint32_t &offset, const uint32_t first, const uint32_t last) {
 	/* search for the seed */
 	uint32_t seed = first;
 	uint32_t this_offset = offset;
@@ -273,7 +273,7 @@ int main(int argc, char *argv[]) {
 	bool seed_search = true;
 	string engraving;
 	vector<uint32_t> offsets;
-	vector<char> changes;
+	vector<unsigned char> changes;
 	uint32_t first = 1, last = 4294967295U;
 
 	string target_dir;
