@@ -24,49 +24,62 @@ typedef struct {
 	unsigned int fact[VECSIZE];
 } intvec;
 
+__device__ __inline__ int nthrandom(const int myf, const intvec *pool, const int *p) {
+	int i;
+	int result = 0;
+	#pragma unroll
+	for (i = 0; i < 31; ++i) {
+		result += pool[myf].fact[i] * p[i];
+	}
+
+	return (result >> 1) & 0x7fffffff;
+}
+
 __global__ void attack(const unsigned int seed, const intvec *pool, const int *engraving, const int engraving_length, const int *offsets, const int *changes, const int num_changes, unsigned int *hits, unsigned int *hit_number) {
 	unsigned int idx = MUL(blockIdx.x, blockDim.x) + threadIdx.x;
-	int buffer[POOL_SIZE];
+	int i;
+	int p[POOL_SIZE];
 
-	long int word = seed + idx;
-	buffer[0] = word;
+	p[0] = seed + idx;
+	{
+		long int hi = p[0] / 127773;
+		long int lo = p[0] % 127773;
+		p[1] = MUL(16807, lo) - MUL(2836, hi);
+	}
+	if (p[1] < 0) {
+		p[1] += 2147483647;
+	}
 
 	/* Initial seed of the RNG for period 31 */
 	#pragma unroll
-	for (int i = 1; i < 31; ++i) {
-		long int hi = word / 127773;
-		long int lo = word % 127773;
-		word = MUL(16807, lo) - MUL(2836, hi);
-		if (word < 0)
-			word += 2147483647;
-		buffer[i] = word;
+	for (i = 2; i < 31; ++i) {
+		unsigned int hi = p[i-1] / 127773;
+		unsigned int lo = p[i-1] % 127773;
+		unsigned int m = MUL(16807, lo) - MUL(2836, hi);
+		unsigned int m2 = (m & 0x7fffffff) + (m >> 31);
+		unsigned int m3 = (m2 & 0x7fffffff) + (m2 >> 31);
+		p[i] = m3;
 	}
 
-	/* Finish up RNG state */
-	#pragma unroll
-	for (int i = 31; i < 34; ++i) {
-		buffer[i] = buffer[i - 31];
+	int myf = 3;
+	if ((nthrandom(myf++, pool, p) % engraving_length) != offsets[0])
+		return;
+	unsigned int second = nthrandom(myf++, pool, p) % ('z' - 'a');
+	if (second != engraving[offsets[0]] && second != changes[0])
+		return;
+	if (second == engraving[offsets[0]]) {
+		do second = nthrandom(myf++, pool, p) % ('z' - 'a');
+			while (second == engraving[offsets[0]]);
 	}
+	if (second != changes[0])
+		return;
 
-	/* Generate numbers to discard plus USABLE_TOTAL real numbers */
-	#pragma unroll
-	for (int i = 34; i < POOL_SIZE; ++i) {
-		buffer[i] = buffer[i - 31] + buffer[i - 3];
-	}
-
-	/* Start with the first usable number */
-	int randidx = FIRST_USABLE;
-
-	int letter;
-	int offset;
-	int attempt = 0;
-	int i = 0;
-	for (i = 0; i < num_changes && randidx < POOL_SIZE; ++i) {
-		do offset = RND(randidx++) % engraving_length;
-			while (offset != offsets[i] && ++attempt < MAX_MATCH_ATTEMPTS);
-		if (attempt == MAX_MATCH_ATTEMPTS)
+	int offset, letter;
+	for (i = 1; i < num_changes; i++) {
+		offset = nthrandom(myf++, pool, p) % engraving_length;
+		if (offset != offsets[i])
 			return;
-		do letter = RND(randidx++) % 25;
+		do letter = nthrandom(myf++, pool, p) % ('z' - 'a');
 			while (letter == engraving[offsets[i]]);
 		if (letter != changes[i])
 			return;
@@ -74,11 +87,11 @@ __global__ void attack(const unsigned int seed, const intvec *pool, const int *e
 
 	unsigned int hit_location = atomicAdd(hit_number, 1);
 	if (hit_location < MAX_HITS)
-		hits[hit_location] = buffer[0];
+		hits[hit_location] = seed + idx;
 }
 
 void
-init(int offset, intvec *pool)
+init(const int offset, intvec *pool)
 {
     int kc = VECSIZE * 10 + offset;
 
@@ -148,12 +161,13 @@ long int find_seed(const char *engraving, int engraving_length, const int *offse
 
 	/* seed initial pool data */
 	intvec pool[31];
-	init(2, pool);
+	bzero(pool, sizeof(intvec) * VECSIZE);
+	init(num_changes * 2, pool);
 
 	/* initialize hit data */
 	unsigned int hit_number = 0;
 	unsigned int hits[MAX_HITS];
-	unsigned long seed = 0;
+	unsigned long seed = 1;
 
 	/* Copy all data from host to device */
 	printf("Copying data from host to CUDA device...\n");
