@@ -113,10 +113,9 @@ bool searchWithinSeed(const string &engraving, const vector<uint32_t> &offsets, 
 		c1 = engraving[n];
 		do {
 			c2 = rn2('z' - 'a') + 'a';
-			++offset;
-			if (offset == 0xFFFFFFFF || (depth != 0 && offset >= depth))
-				return false;
 		} while (c1 == c2);
+
+		++offset;
 
 		if (changes[cur_index] == c2) {
 			++cur_index;
@@ -140,7 +139,7 @@ bool find_seed_hash(const string &engraving, const vector<uint32_t> &offsets, co
 	init(10);
 
 	// The file to pull seeds from
-	uint32_t hash = offsets[0] * ('z' - 'a') + changes[0];
+	uint32_t hash = offsets[0] * ('z' - 'a') + changes[0] - 'a';
 	cout << "Reading seeds from " << hash << endl;
 
 	stringstream filename;
