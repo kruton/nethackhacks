@@ -31,8 +31,8 @@ extern "C" int init(int);
 extern "C" void seedwith(unsigned int);
 extern "C" int nthrandom(int);
 
-vector<uint32_t> random_cache;
-uint32_t last_random;
+vector<long int> random_cache;
+long int last_random;
 string program;
 
 void print_usage() {
@@ -65,7 +65,7 @@ inline char lowc(char c) {
 	return ((char) (('A' <= c && c <= 'Z') ? (c | 040) : c));
 }
 
-inline uint32_t rn2(int x) {
+inline long int rn2(int x) {
 	if (!random_cache.empty()) {
 		last_random = random_cache.front();
 		random_cache.erase(random_cache.begin());
