@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <cstdlib>
 #include <vector>
 #include <stdlib.h>
@@ -26,6 +27,9 @@ using namespace std;
 
 extern "C" int firstrandom(unsigned int seed);
 extern "C" int secondrandom();
+extern "C" int init(int);
+extern "C" void seedwith(unsigned int);
+extern "C" int nthrandom(int);
 
 vector<uint32_t> random_cache;
 uint32_t last_random;
@@ -47,6 +51,10 @@ void print_usage() {
 	cout << "       --begin <integer>     starting seed to check" << endl;
 	cout << "       -l" << endl;
 	cout << "       --last <integer>      end seed to check" << endl;
+	cout << "       -d" << endl;
+	cout << "       --directory <dir>     directory where hashes will be read or generated" << endl;
+	cout << "       -g" << endl;
+	cout << "       --generate            generate hashes in directory specified by -d" << endl;
 }
 
 inline char highc(char c) {
@@ -127,8 +135,42 @@ bool searchWithinSeed(const string &engraving, const vector<uint32_t> &offsets, 
 	return true;
 }
 
-void find_seed(uint32_t & seed, uint32_t last, string & engraving, vector<uint32_t> & offsets, vector<uint32_t> & changes, uint32_t & this_offset, uint32_t & offset, uint32_t first, time_t start_time)
-{
+bool find_seed_hash(const string &engraving, const vector<uint32_t> &offsets, const vector<uint32_t> &changes, const string &target_dir) {
+	// Initialize the random number generator for 10 numbers
+	init(10);
+
+	// The file to pull seeds from
+	uint32_t hash = offsets[0] * ('z' - 'a') + changes[0];
+	cout << "Reading seeds from " << hash << endl;
+
+	stringstream filename;
+	filename << target_dir << '/' << hash << ".dat";
+
+	ifstream seeds;
+	seeds.open(filename.str().c_str(), ios::binary);
+	if (!seeds) {
+		cout << "Couldn't open " << filename.str() << endl;
+		return false;
+	}
+
+	uint32_t seed;
+	while (seeds.read((char *)&seed, sizeof(uint32_t))) {
+		srandom(seed);
+		uint32_t this_offset = 0;
+		if (unlikely(searchWithinSeed(engraving, offsets, changes, this_offset, 1))) {
+			cout << "Seed found " << seed << endl;
+		}
+	}
+
+	return true;
+}
+
+bool find_seed_brute(const string &engraving, const vector<uint32_t> &offsets, const vector<uint32_t> &changes, uint32_t &offset, const uint32_t first, const uint32_t last) {
+	/* search for the seed */
+	uint32_t seed = first;
+	uint32_t this_offset = offset;
+	time_t start_time = time(0);
+
 	while (seed < last) {
 		uint32_t n = firstrandom(seed) % engraving.size();
 		if (unlikely(n == offsets[0])) {
@@ -158,16 +200,27 @@ void find_seed(uint32_t & seed, uint32_t last, string & engraving, vector<uint32
 			cout << endl;
 		}
 	}
+
+	offset = this_offset;
+
+	if (seed == last) {
+		cout << "Couldn't find seed that generated this corruption sequence." << endl;
+		return false;
+	}
+
+	cout << "Seed found: " << seed << endl;
+	return true;
 }
 
 bool generate_files(const string &target_dir, const string &engraving) {
 	const int num_files = engraving.size() * ('z' - 'a');
 	ofstream files[num_files];
+
 	for (int i = 0; i < num_files; ++i) {
-		char filename[512];
-		snprintf(filename, 512, "%s/%d.dat", target_dir.c_str(), i);
-		cout << "Opening file: " << filename << endl;
-		files[i].open(filename, ios::out | ios::binary | ios::trunc);
+		stringstream filename;
+		filename << target_dir << "/" << i << ".dat";
+		cout << "Opening file: " << filename.str() << endl;
+		files[i].open(filename.str().c_str(), ios::out | ios::binary | ios::trunc);
 		if (!files[i])
 			return false;
 	}
@@ -180,13 +233,13 @@ bool generate_files(const string &target_dir, const string &engraving) {
 
 		uint32_t hash = n1 * ('z' - 'a') + n2;
 
-		files[hash].write((char *)(&seed), sizeof(seed));
+		files[hash].write((char *)(&seed), sizeof(uint32_t));
 
 		if (unlikely((++seed % (4*524288)) == 0)) {
 			uint32_t completed = seed - 1;
 			uint32_t elapsed = time(0) - start_time;
 			uint32_t remain = 0xFFFFFFFFUL - seed;
-			long eta = (remain / completed) * elapsed;
+			uint32_t eta = (remain / completed) * elapsed;
 
 			cout << "Writing seed: " << seed << ", ETA: " << eta;
 			if (elapsed > 0)
@@ -203,7 +256,7 @@ bool generate_files(const string &target_dir, const string &engraving) {
 
 int main(int argc, char *argv[]) {
 	program = string(argv[0]);
-	const char* const short_options = "hs:o:e:f:l:g:";
+	const char* const short_options = "hs:o:e:f:l:gd:";
 	const struct option long_options[] = {
 			{"help", 0, NULL, 'h'},
 			{"seed", 1, NULL, 's'},
@@ -211,7 +264,8 @@ int main(int argc, char *argv[]) {
 			{"engraving", 1, NULL, 'e'},
 			{"first", 1, NULL, 'f'},
 			{"last", 1, NULL, 'l'},
-			{"generate", 1, NULL, 'g'},
+			{"generate", 0, NULL, 'g'},
+			{"directory", 1, NULL, 'd'},
 			{NULL, 0, NULL, 0}
 	};
 
@@ -246,9 +300,11 @@ int main(int argc, char *argv[]) {
 		case 'l':
 			last = (unsigned int)strtoul(optarg, NULL, 0);
 			break;
+		case 'd':
+			target_dir = string(optarg);
+			break;
 		case 'g':
 			generate = true;
-			target_dir = string(optarg);
 			break;
 		}
 	}
@@ -260,6 +316,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (generate) {
+		if (target_dir.size() == 0) {
+			cout << "Must specify target directory when generating!" << endl;
+			return EXIT_FAILURE;
+		}
 		if (generate_files(target_dir, engraving)) {
 			cout << "Rainbow tables generated." << endl;
 			return EXIT_SUCCESS;
@@ -287,20 +347,13 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (seed_search) {
-		/* search for the seed */
-		uint32_t seed = first;
-		uint32_t this_offset = offset;
-		time_t start_time = time(0);
+		bool success;
+		if (target_dir.size() > 0)
+			success = find_seed_hash(engraving, offsets, changes, target_dir);
+		else
+			success = find_seed_brute(engraving, offsets, changes, offset, first, last);
 
-		find_seed(seed, last, engraving, offsets, changes, this_offset, offset, first, start_time);
-		offset = this_offset;
-
-		if (seed == INT_MAX) {
-			cout << "Couldn't find seed that generated this corruption sequence." << endl;
-			return EXIT_FAILURE;
-		}
-
-		cout << "Seed found: " << seed << endl;
+		return success ? EXIT_SUCCESS : EXIT_FAILURE;
 	} else {
 		cout << "Searching for good fountain dipping turn with seed " << seed << " and offset " << offset << endl;
 		srandom(seed);

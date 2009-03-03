@@ -12,26 +12,27 @@ int f, r;
 void
 init(int offset)
 {
-    int kc = 31 * 10 + offset;
+	int kc = 31 * 10 + offset;
 
-    int i;
-    for (i = 0; i < 31; ++i)
-    	pool[i].fact[i] = 1;
-
-    f = 3; r = 0;
-    while (--kc >= 0) {
+	int i;
 	for (i = 0; i < 31; ++i)
-	    pool[f].fact[i] += pool[r].fact[i];
-	++f;
-	if (f >= 31) {
-	    f = 0;
-	    ++r;
-	} else {
-	    ++r;
-	    if (r >= 31)
-	      r = 0;
+		pool[i].fact[i] = 1;
+
+	f = 3;
+	r = 0;
+	while (--kc >= 0) {
+		for (i = 0; i < 31; ++i)
+			pool[f].fact[i] += pool[r].fact[i];
+		++f;
+		if (f >= 31) {
+			f = 0;
+			++r;
+		} else {
+			++r;
+			if (r >= 31)
+				r = 0;
+		}
 	}
-    }
 #if 0
     for (int j = 0; j < 31; ++j) {
 	printf("%d:\n", j);
@@ -97,10 +98,28 @@ static inline int nthrandom(int myf)
 
 static int first = 1;
 static int myf, myf2;
+
+inline int
+seedwith(unsigned int seed) {
+    p[0] = seed;
+	p[1] = (16807LL * p[0]) % 2147483647;
+	if (p[1] < 0) {
+		p[1] += 2147483647;
+	}
+	/* this is a non-dividing modulo.  it fails for 2147483647 and
+	 * doesn't have the special cases for negative numbers, but they
+	 * can never occur after the first seed, hence the one step above
+	 */
+	int i;
+	for (i = 2; i < 31; i++) {
+		uint64_t m = 16807ULL * p[i - 1];
+		uint32_t m2 = (m & 0x7fffffff) + (m >> 31);
+		uint32_t m3 = (m2 & 0x7fffffff) + (m2 >> 31);
+		p[i] = m3;
+	}
+}
 int
 firstrandom(unsigned int seed) {
-	int i;
-
 	if (first) {
 		first = 0;
 		init(2);
@@ -110,21 +129,7 @@ firstrandom(unsigned int seed) {
 		if (myf2 < 0) myf2 += 31;
 	}
 	if (seed) {
-	    p[0] = seed;
-	    p[1] = (16807LL * p[0]) % 2147483647;
-	    if (p[1] < 0) {
-		    p[1] += 2147483647;
-	    }
-	    /* this is a non-dividing modulo.  it fails for 2147483647 and
-	     * doesn't have the special cases for negative numbers, but they
-	     * can never occur after the first seed, hence the one step above
-	     */
-	    for (i=2; i<31; i++) {
-		    uint64_t m = 16807ULL * p[i-1];
-		    uint32_t m2 = (m & 0x7fffffff) + (m >> 31);
-		    uint32_t m3 = (m2 & 0x7fffffff) + (m2 >> 31);
-		    p[i] = m3;
-	    }
+		seedwith(seed);
 	}
 	return nthrandom(myf);
 }
