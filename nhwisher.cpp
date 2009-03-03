@@ -13,10 +13,18 @@
 #include <limits.h>
 #include <stdint.h>
 
+using namespace std;
+
+#if 0
 #define likely(x)		__builtin_expect((x),1)
 #define unlikely(x)		__builtin_expect((x),0)
+#else
+#define likely(x)		(x)
+#define unlikely(x)		(x)
+#endif
 
-using namespace std;
+extern "C" int firstrandom(unsigned int seed);
+extern "C" int secondrandom();
 
 vector<uint32_t> random_cache;
 uint32_t last_random;
@@ -83,7 +91,7 @@ bool searchWithinSeed(const string &engraving, const vector<uint32_t> &offsets, 
 
 	while (true) {
 		uint32_t n = rn2(engraving.size());
-		if (__likely(offsets[cur_index] != n)) {
+		if (likely(offsets[cur_index] != n)) {
 			++offset;
 			if (offset == 0xFFFFFFFF || (depth != 0 && offset >= depth))
 				return false;
@@ -192,14 +200,21 @@ int main(int argc, char *argv[]) {
 		time_t start_time = time(0);
 
 		while (seed < last) {
-			srandom(seed);
-			for (uint32_t i = 0; i < this_offset; i++)
-				random();
-			if (searchWithinSeed(engraving, offsets, changes, this_offset, 1)) {
-				cout << "Seed found " << seed << endl;
+			uint32_t n = firstrandom(seed) % engraving.size();
+			if (unlikely(n == offsets[0])) {
+				uint32_t m = secondrandom() % ('z' - 'a');
+				if (unlikely(m == (unsigned int)engraving[n] || m == changes[0])) {
+					srandom(seed);
+					for (uint32_t i = 0; i < this_offset; i++)
+						random();
+					if (unlikely(searchWithinSeed(engraving, offsets, changes, this_offset, 1))) {
+						cout << "Seed found " << seed << endl;
+					}
+					this_offset = offset;
+				}
 			}
 			this_offset = offset;
-			if ((++seed & 524287) == 524287) {
+			if (unlikely((++seed % (4*524288)) == 0)) {
 				uint32_t completed = seed - first;
 				uint32_t elapsed = time(0) - start_time;
 				uint32_t remain = last - seed;
