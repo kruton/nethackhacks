@@ -71,7 +71,7 @@ inline long int rn2(int x) {
 		random_cache.erase(random_cache.begin());
 	} else
 		last_random = random();
-	return last_random % x;
+	return (int)(last_random % (long)x);
 }
 
 inline void save_random(uint32_t number) {
