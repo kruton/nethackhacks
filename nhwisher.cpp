@@ -6,6 +6,7 @@
  */
 
 #include <iostream>
+#include <fstream>
 #include <cstdlib>
 #include <vector>
 #include <stdlib.h>
@@ -126,9 +127,83 @@ bool searchWithinSeed(const string &engraving, const vector<uint32_t> &offsets, 
 	return true;
 }
 
+void find_seed(uint32_t & seed, uint32_t last, string & engraving, vector<uint32_t> & offsets, vector<uint32_t> & changes, uint32_t & this_offset, uint32_t & offset, uint32_t first, time_t start_time)
+{
+	while (seed < last) {
+		uint32_t n = firstrandom(seed) % engraving.size();
+		if (unlikely(n == offsets[0])) {
+			uint32_t m = secondrandom() % ('z' - 'a');
+			if (unlikely(m == (unsigned int)engraving[n] || m == changes[0])) {
+				srandom(seed);
+				for (uint32_t i = 0; i < this_offset; i++)
+					random();
+				if (unlikely(searchWithinSeed(engraving, offsets, changes, this_offset, 1))) {
+					cout << "Seed found " << seed << endl;
+				}
+				this_offset = offset;
+			}
+		}
+
+		this_offset = offset;
+
+		if (unlikely((++seed % (4*524288)) == 0)) {
+			uint32_t completed = seed - first;
+			uint32_t elapsed = time(0) - start_time;
+			uint32_t remain = last - seed;
+			long eta = (remain / completed) * elapsed;
+
+			cout << "Checking seed: " << seed << ", ETA: " << eta;
+			if (elapsed > 0)
+				cout << ", " << (completed / elapsed) << " per second";
+			cout << endl;
+		}
+	}
+}
+
+bool generate_files(const string &target_dir, const string &engraving) {
+	const int num_files = engraving.size() * ('z' - 'a');
+	ofstream files[num_files];
+	for (int i = 0; i < num_files; ++i) {
+		char filename[512];
+		snprintf(filename, 512, "%s/%d.dat", target_dir.c_str(), i);
+		cout << "Opening file: " << filename << endl;
+		files[i].open(filename, ios::out | ios::binary | ios::trunc);
+		if (!files[i])
+			return false;
+	}
+
+	time_t start_time = time(0);
+
+	for (uint32_t seed = 1; seed < 0xFFFFFFFFUL; seed++) {
+		uint32_t n1 = firstrandom(seed) % engraving.size();
+		uint32_t n2 = secondrandom() % ('z' - 'a');
+
+		uint32_t hash = n1 * ('z' - 'a') + n2;
+
+		files[hash].write((char *)(&seed), sizeof(seed));
+
+		if (unlikely((++seed % (4*524288)) == 0)) {
+			uint32_t completed = seed - 1;
+			uint32_t elapsed = time(0) - start_time;
+			uint32_t remain = 0xFFFFFFFFUL - seed;
+			long eta = (remain / completed) * elapsed;
+
+			cout << "Writing seed: " << seed << ", ETA: " << eta;
+			if (elapsed > 0)
+				cout << ", " << (completed / elapsed) << " per second";
+			cout << endl;
+		}
+	}
+
+	for (int i = 0; i < num_files; ++i)
+		files[i].close();
+
+	return true;
+}
+
 int main(int argc, char *argv[]) {
 	program = string(argv[0]);
-	const char* const short_options = "hs:o:e:f:l:";
+	const char* const short_options = "hs:o:e:f:l:g:";
 	const struct option long_options[] = {
 			{"help", 0, NULL, 'h'},
 			{"seed", 1, NULL, 's'},
@@ -136,6 +211,7 @@ int main(int argc, char *argv[]) {
 			{"engraving", 1, NULL, 'e'},
 			{"first", 1, NULL, 'f'},
 			{"last", 1, NULL, 'l'},
+			{"generate", 1, NULL, 'g'},
 			{NULL, 0, NULL, 0}
 	};
 
@@ -146,6 +222,9 @@ int main(int argc, char *argv[]) {
 	vector<uint32_t> offsets;
 	vector<uint32_t> changes;
 	uint32_t first = 1, last = 4294967295U;
+
+	string target_dir;
+	bool generate = false;
 
 	int next_opt;
 	while ((next_opt = getopt_long(argc, argv, short_options, long_options, NULL)) != -1) {
@@ -167,6 +246,10 @@ int main(int argc, char *argv[]) {
 		case 'l':
 			last = (unsigned int)strtoul(optarg, NULL, 0);
 			break;
+		case 'g':
+			generate = true;
+			target_dir = string(optarg);
+			break;
 		}
 	}
 
@@ -174,6 +257,16 @@ int main(int argc, char *argv[]) {
 		print_usage();
 		cout << endl << "Engraving argument is required!" << endl;
 		return EXIT_FAILURE;
+	}
+
+	if (generate) {
+		if (generate_files(target_dir, engraving)) {
+			cout << "Rainbow tables generated." << endl;
+			return EXIT_SUCCESS;
+		} else {
+			cout << "Error creating rainbow table files." << endl;
+			return EXIT_FAILURE;
+		}
 	}
 
 	for (int i = optind; i < argc; i++) {
@@ -199,34 +292,7 @@ int main(int argc, char *argv[]) {
 		uint32_t this_offset = offset;
 		time_t start_time = time(0);
 
-		while (seed < last) {
-			uint32_t n = firstrandom(seed) % engraving.size();
-			if (unlikely(n == offsets[0])) {
-				uint32_t m = secondrandom() % ('z' - 'a');
-				if (unlikely(m == (unsigned int)engraving[n] || m == changes[0])) {
-					srandom(seed);
-					for (uint32_t i = 0; i < this_offset; i++)
-						random();
-					if (unlikely(searchWithinSeed(engraving, offsets, changes, this_offset, 1))) {
-						cout << "Seed found " << seed << endl;
-					}
-					this_offset = offset;
-				}
-			}
-			this_offset = offset;
-			if (unlikely((++seed % (4*524288)) == 0)) {
-				uint32_t completed = seed - first;
-				uint32_t elapsed = time(0) - start_time;
-				uint32_t remain = last - seed;
-				long eta = (remain / completed) * elapsed;
-
-				cout << "Checking seed: " << seed << ", ETA: " << eta;
-				if (elapsed > 0)
-					cout << ", " << (completed / elapsed) << " per second";
-				cout << endl;
-			}
-		}
-
+		find_seed(seed, last, engraving, offsets, changes, this_offset, offset, first, start_time);
 		offset = this_offset;
 
 		if (seed == INT_MAX) {
